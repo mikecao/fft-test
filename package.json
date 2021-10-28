@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@descript/web-audio-js": "^0.15.3-patched.5",
     "@testing-library/jest-dom": "^5.11.4",
     "@testing-library/react": "^11.1.0",
     "@testing-library/user-event": "^12.1.10",
+    "fourier-transform": "^1.1.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-scripts": "4.0.3",
-    "web-vitals": "^1.0.1"
+    "speaker": "^0.5.3",
+    "web-audio-engine": "^0.13.4",
+    "web-vitals": "^1.0.1",
+    "window-function": "^2.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
