@@ -31,7 +31,7 @@ const context2 = new AudioContext2({ sampleRate });
 let analyser2 = Object.assign(context2.createAnalyser(), {
   fftSize,
   minDecibels,
-  maxDecibels,
+  maxDecibels: -10,
   smoothingTimeConstant,
 });
 
@@ -40,11 +40,7 @@ for (let i = 0; i < fftSize; i++) {
 }
 
 let analyserBusOffset = 0;
-const analyserBus = context.createBuffer(
-  NUM_CHANNELS,
-  MAX_FFT_SIZE,
-  sampleRate
-);
+const analyserBus = context.createBuffer(1, MAX_FFT_SIZE, sampleRate);
 
 const bufferLength = analyser.frequencyBinCount;
 const byteArray = new Uint8Array(bufferLength);
@@ -194,23 +190,24 @@ export default function App() {
   }
 
   function processAudio() {
-    const currentTime = context.currentTime - startTime;
-    const pct = currentTime / audioBuffer.duration;
+    const duration = context.currentTime - startTime;
+    const pct = duration / audioBuffer.duration;
     const pos = pct * audioBuffer.length;
 
     if (pct >= 1) return;
 
     // merge and store data in our buffer
-    for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
-      const channelData = audioBuffer.getChannelData(c);
-      const data = channelData.slice(pos, pos + 128);
-      analyserBus.copyToChannel(data, c, analyserBusOffset);
-    }
+    const channelData = audioBuffer.getChannelData(0);
+    const data = channelData.slice(
+      pos > MAX_FFT_SIZE ? pos - MAX_FFT_SIZE : pos,
+      pos > MAX_FFT_SIZE ? pos : pos + MAX_FFT_SIZE
+    );
+    analyserBus.copyToChannel(data, 0, analyserBusOffset);
 
     //analyserBusOffset += pos;
 
-    analyserBusOffset += BLOCK_SIZE;
-    if (MAX_FFT_SIZE <= analyserBusOffset) {
+    analyserBusOffset += MAX_FFT_SIZE;
+    if (analyserBusOffset >= MAX_FFT_SIZE) {
       analyserBusOffset = 0;
     }
   }
@@ -223,7 +220,7 @@ export default function App() {
     if (canvas1.current) {
       analyser.getByteFrequencyData(byteArray);
       analyser.getFloatFrequencyData(floatArray);
-      drawBars(canvas1, byteArray);
+      drawBars(canvas1, byteArray, 1);
     }
 
     if (canvas2.current) {
@@ -232,32 +229,39 @@ export default function App() {
 
       analyser2.getByteFrequencyData(byteArray2);
       analyser2.getFloatFrequencyData(floatArray2);
-      drawBars(canvas2, byteArray2);
+      drawBars(canvas2, byteArray2, 2);
     }
 
     if (canvas3.current) {
       processAudio();
       getByteFrequencyData(byteArray3);
       getFloatFrequencyData(floatArray3);
-      drawBars(canvas3, byteArray3);
+      drawBars(canvas3, byteArray3, 3);
     }
 
     if (print) {
       console.log({
         byteArray,
         byteArray2,
-        diff1and2: byteArray.map((n, i) => (n / byteArray2[i]) * 100),
+        diff1and2: byteArray.map(
+          (n, i) => (100 * Math.abs(n - byteArray2[i])) / 255
+        ),
         byteArray3,
-        diff1and3: byteArray.map((n, i) => (n / byteArray3[i]) * 100),
+        diff1and3: byteArray.map(
+          (n, i) => (100 * Math.abs(n - byteArray3[i])) / 255
+        ),
       });
       print = false;
     }
   }
 
-  function drawBars(ref, data) {
+  function drawBars(ref, data, type) {
     const canvas = ref.current.getContext("2d");
     const width = ref.current.width;
     const height = ref.current.height;
+
+    const maxDb = type > 1 ? analyser2.maxDecibels : maxDecibels;
+    const minDb = type > 1 ? analyser2.minDecibels : minDecibels;
 
     canvas.fillStyle = "lightgray";
     canvas.fillRect(0, 0, width, height);
@@ -271,8 +275,7 @@ export default function App() {
 
       const db = -100 * (1 - data[i] / 256);
 
-      barHeight =
-        val2pct(db2mag(db), db2mag(minDecibels), db2mag(maxDecibels)) * height;
+      barHeight = val2pct(db2mag(db), db2mag(minDb), db2mag(maxDb)) * height;
 
       canvas.fillStyle = "red";
       canvas.fillRect(x, height - barHeight, barWidth, barHeight);
