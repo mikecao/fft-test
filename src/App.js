@@ -13,6 +13,9 @@ const maxDecibels = -12;
 const sampleRate = 44100;
 const fftSize = 1024;
 const smoothingTimeConstant = 0.5;
+const CANVAS_WIDTH = 1024;
+const CANVAS_HEIGHT = 300;
+
 const blackmanTable = new Float32Array(fftSize);
 const previousSmooth = new Float32Array(fftSize / 2);
 
@@ -60,6 +63,8 @@ let audioData;
 let audioData2;
 let playing = false;
 let print = false;
+
+console.log({ context, context2, analyser, analyser2 });
 
 export default function App() {
   const canvas1 = useRef();
@@ -233,20 +238,19 @@ export default function App() {
     if (canvas3.current) {
       processAudio();
       getByteFrequencyData(byteArray3);
-
-      if (print) {
-        console.log({
-          byteArray,
-          floatArray,
-          byteArray2,
-          floatArray2,
-          byteArray3,
-          floatArray3,
-        });
-        print = false;
-      }
-
+      getFloatFrequencyData(floatArray3);
       drawBars(canvas3, byteArray3);
+    }
+
+    if (print) {
+      console.log({
+        byteArray,
+        byteArray2,
+        diff1and2: byteArray.map((n, i) => (n / byteArray2[i]) * 100),
+        byteArray3,
+        diff1and3: byteArray.map((n, i) => (n / byteArray3[i]) * 100),
+      });
+      print = false;
     }
   }
 
@@ -258,7 +262,7 @@ export default function App() {
     canvas.fillStyle = "lightgray";
     canvas.fillRect(0, 0, width, height);
 
-    let barWidth = (width / bufferLength) * 2.5;
+    let barWidth = width / bufferLength;
     let barHeight;
     let x = 0;
 
@@ -268,11 +272,7 @@ export default function App() {
       const db = -100 * (1 - data[i] / 256);
 
       barHeight =
-        val2pct(
-          db2mag(db),
-          db2mag(analyser.minDecibels),
-          db2mag(analyser.maxDecibels)
-        ) * height;
+        val2pct(db2mag(db), db2mag(minDecibels), db2mag(maxDecibels)) * height;
 
       canvas.fillStyle = "red";
       canvas.fillRect(x, height - barHeight, barWidth, barHeight);
@@ -298,12 +298,12 @@ export default function App() {
       </div>
       <canvas
         ref={canvas1}
-        width="600"
-        height="300"
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
         onClick={() => (print = true)}
       />
-      <canvas ref={canvas2} width="600" height="300" />
-      <canvas ref={canvas3} width="600" height="300" />
+      <canvas ref={canvas2} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+      <canvas ref={canvas3} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
     </div>
   );
 }
