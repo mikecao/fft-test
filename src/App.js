@@ -52,7 +52,8 @@ const floatArray3 = new Float32Array(bufferLength);
 
 let source;
 let source2;
-let startTime;
+let startTime = 0;
+let lastTime = 0;
 let audioBuffer;
 let audioBuffer2;
 let audioData;
@@ -192,24 +193,31 @@ export default function App() {
   function processAudio() {
     const duration = context.currentTime - startTime;
     const pct = duration / audioBuffer.duration;
-    const pos = pct * audioBuffer.length;
+    const pos = Math.floor(pct * audioBuffer.length);
 
     if (pct >= 1) return;
 
-    // merge and store data in our buffer
-    const channelData = audioBuffer.getChannelData(0);
-    const data = channelData.slice(
-      pos > MAX_FFT_SIZE ? pos - MAX_FFT_SIZE : pos,
-      pos > MAX_FFT_SIZE ? pos : pos + MAX_FFT_SIZE
-    );
-    analyserBus.copyToChannel(data, 0, analyserBusOffset);
+    if (lastTime > 0) {
+      const diff = context.currentTime - lastTime;
+      const samples = (diff / audioBuffer.duration) * audioBuffer.length;
 
-    //analyserBusOffset += pos;
+      // merge and store data in our buffer
+      const channelData = audioBuffer.getChannelData(0);
+      //const channelData2 = audioBuffer.getChannelData(0);
+      // merge channels according to algorithm
+      const data = channelData.slice(pos, pos + samples);
 
-    analyserBusOffset += MAX_FFT_SIZE;
-    if (analyserBusOffset >= MAX_FFT_SIZE) {
-      analyserBusOffset = 0;
+      analyserBus.copyToChannel(data, 0, analyserBusOffset);
+
+      //analyserBusOffset += pos;
+
+      analyserBusOffset += samples;
+      if (analyserBusOffset >= MAX_FFT_SIZE) {
+        analyserBusOffset = 0;
+      }
     }
+
+    lastTime = context.currentTime;
   }
 
   function draw() {
