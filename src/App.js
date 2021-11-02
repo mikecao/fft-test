@@ -3,6 +3,7 @@ import fft from "fourier-transform";
 import blackman from "window-function/blackman";
 import { db2mag, val2pct, toDecibel, normalize } from "./utils";
 import { RenderingAudioContext as AudioContext2 } from "web-audio-engine";
+import FFT from "./FFT";
 
 const MAX_FFT_SIZE = 32768;
 const NUM_CHANNELS = 2;
@@ -60,6 +61,7 @@ let audioData;
 let audioData2;
 let playing = false;
 let print = false;
+let fftParser;
 
 console.log({ context, context2, analyser, analyser2 });
 
@@ -116,12 +118,16 @@ export default function App() {
     source2.connect(analyser2);
     analyser2.connect(context2.destination);
     source2.start();
+
+    context2.processTo(context.currentTime);
     context2.resume();
 
     console.log("STARTED");
 
     startTime = context.currentTime;
     playing = true;
+
+    fftParser = new FFT(context, audioBuffer, fftSize);
   }
 
   function handleStop() {
@@ -130,64 +136,6 @@ export default function App() {
     console.log("STOPPED");
 
     playing = false;
-  }
-
-  function getFloatTimeDomainData(array) {
-    const i0 = (analyserBusOffset - fftSize + MAX_FFT_SIZE) % MAX_FFT_SIZE;
-    const i1 = Math.min(i0 + fftSize, MAX_FFT_SIZE);
-    const copied = i1 - i0;
-    const busData = analyserBus.getChannelData(0);
-
-    array.set(busData.subarray(i0, i1));
-
-    if (copied !== fftSize) {
-      const remain = fftSize - copied;
-      const subarray2 = busData.subarray(0, remain);
-
-      array.set(subarray2, copied);
-    }
-  }
-
-  function getFloatFrequencyData(array) {
-    const waveform = new Float32Array(fftSize);
-    const length = Math.min(array.length, fftSize / 2);
-
-    // 1. down-mix
-    getFloatTimeDomainData(waveform);
-
-    // 2. Apply Blackman window
-    for (let i = 0; i < fftSize; i++) {
-      waveform[i] = waveform[i] * blackmanTable[i] || 0;
-    }
-
-    // 3. FFT
-    const spectrum = fft(waveform);
-
-    // re-size to frequencyBinCount, then do more processing
-    for (let i = 0; i < length; i++) {
-      const v0 = spectrum[i];
-      // 4. Smooth over data
-      previousSmooth[i] =
-        smoothingTimeConstant * previousSmooth[i] +
-        (1 - smoothingTimeConstant) * v0;
-      // 5. Convert to dB
-      const v1 = toDecibel(previousSmooth[i]);
-      // store in array
-      array[i] = Number.isFinite(v1) ? v1 : 0;
-    }
-  }
-
-  function getByteFrequencyData(array) {
-    const length = Math.min(array.length, fftSize / 2);
-    const spectrum = new Float32Array(length);
-
-    getFloatFrequencyData(spectrum);
-
-    for (let i = 0; i < length; i++) {
-      array[i] = Math.round(
-        normalize(spectrum[i], minDecibels, maxDecibels) * 255
-      );
-    }
   }
 
   function processAudio() {
@@ -202,14 +150,20 @@ export default function App() {
       const samples = (diff / audioBuffer.duration) * audioBuffer.length;
 
       // merge and store data in our buffer
-      const channelData = audioBuffer.getChannelData(0);
+      const channelData1 = audioBuffer
+        .getChannelData(0)
+        .slice(pos, pos + samples);
+      const channelData2 = audioBuffer
+        .getChannelData(0)
+        .slice(pos, pos + samples);
+
       //const channelData2 = audioBuffer.getChannelData(0);
       // merge channels according to algorithm
-      const data = channelData.slice(pos, pos + samples);
+      const data = channelData1.map((n, i) => (n + channelData2[i]) / 2);
 
-      analyserBus.copyToChannel(data, 0, analyserBusOffset);
-
+      //analyserBus.copyToChannel(data, 0, analyserBusOffset);
       //analyserBusOffset += pos;
+      fftParser.process(data);
 
       analyserBusOffset += samples;
       if (analyserBusOffset >= MAX_FFT_SIZE) {
@@ -242,8 +196,8 @@ export default function App() {
 
     if (canvas3.current) {
       processAudio();
-      getByteFrequencyData(byteArray3);
-      getFloatFrequencyData(floatArray3);
+      fftParser.getByteFrequencyData(byteArray3);
+      fftParser.getFloatFrequencyData(floatArray3);
       drawBars(canvas3, byteArray3, 3);
     }
 
@@ -258,6 +212,7 @@ export default function App() {
         diff1and3: byteArray.map(
           (n, i) => (100 * Math.abs(n - byteArray3[i])) / 255
         ),
+        buffer: fftParser.audioBuffer,
       });
       print = false;
     }
@@ -279,8 +234,6 @@ export default function App() {
     let x = 0;
 
     for (let i = 0; i < bufferLength; i++) {
-      //barHeight = dataArray[i] / 2;
-
       const db = -100 * (1 - data[i] / 256);
 
       barHeight = val2pct(db2mag(db), db2mag(minDb), db2mag(maxDb)) * height;
